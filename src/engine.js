@@ -144,6 +144,41 @@ export function transfers(data, month) {
   return result;
 }
 
+// Cosa serve su ogni conto nel mese: addebiti diretti più i giroconti in uscita.
+// Ogni persona paga dal "conto principale" (dove arriva il suo stipendio); i suoi altri conti si ricaricano da lì.
+export function accountPlan(data, month) {
+  const occs = occurrencesForMonth(data, month);
+  const incomes = incomesForMonth(data, month);
+  const tr = transfers(data, month);
+  const joint = data.accounts.find((a) => a.owner === 'comune');
+  const plan = new Map(data.accounts.map((a) => [a.id, {
+    accountId: a.id,
+    debits: round2(occs.filter((o) => o.accountId === a.id).reduce((s, o) => s + o.amount, 0)),
+    income: round2(incomes.filter((i) => i.accountId === a.id).reduce((s, i) => s + i.amount, 0)),
+    out: [], in: [],
+  }]));
+  const move = (from, to, amount) => {
+    if (!from || !to || from === to || amount <= 0) return;
+    plan.get(from).out.push({ accountId: to, amount: round2(amount) });
+    plan.get(to).in.push({ accountId: from, amount: round2(amount) });
+  };
+  for (const p of data.people) {
+    const own = data.accounts.filter((a) => a.owner === p.id);
+    const main = incomes.find((i) => i.personId === p.id && own.some((a) => a.id === i.accountId))?.accountId ?? own[0]?.id;
+    for (const a of own) {
+      const pl = plan.get(a.id);
+      move(main, a.id, pl.debits - pl.income);
+    }
+    const c = tr.people[p.id]?.contribution ?? 0;
+    if (joint) { if (c >= 0) move(main, joint.id, c); else move(joint.id, main, -c); }
+  }
+  return [...plan.values()].map((x) => {
+    const outTotal = x.out.reduce((s, t) => s + t.amount, 0);
+    const inTotal = x.in.reduce((s, t) => s + t.amount, 0);
+    return { ...x, needed: round2(x.debits + outTotal), balanceChange: round2(x.income + inTotal - x.debits - outTotal) };
+  });
+}
+
 export function totalsByCategory(expenses) {
   const map = new Map();
   for (const o of expenses) map.set(o.category, (map.get(o.category) ?? 0) + o.amount);

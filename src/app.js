@@ -1,4 +1,4 @@
-import { dueList, monthSummary, loanStatus, addMonths, incomeLabel, incomesForMonth, amountFor, INCOME_TYPES } from './engine.js';
+import { dueList, monthSummary, accountPlan, loanStatus, addMonths, incomeLabel, incomesForMonth, amountFor, INCOME_TYPES } from './engine.js';
 import { OTHER_PRESET, presetsOf, categoryLabel, presetsToText, textToPresets } from './categories.js';
 import { loadData, saveData, saveLocal, setAfterSave, blankData, resetData, newId, migrate } from './store.js';
 import * as cloud from './cloud.js';
@@ -117,6 +117,14 @@ function viewMese() {
   const loans = data.loans.map((l) => ({ l, st: loanStatus(l, month) })).filter((x) => x.st.active).map(({ l, st }) => `
     <div class="card"><div class="riga"><strong>${esc(l.label)}</strong><span class="imp">${eur(l.installment)}</span></div>
       <div class="sub">rate rimaste ${st.remaining}/${l.totalInstallments} · debito residuo ${eur(st.residualDebt)} · fine ${monthLabel(st.endMonth)}</div></div>`).join('');
+  const plan = accountPlan(data, month).filter((p) => p.needed || p.income || p.in.length).map((p) => `
+    <div class="card"><div class="riga"><strong>${esc(accName(p.accountId))}</strong>
+      <span class="imp">${p.needed ? `Servono ${eur(p.needed)}` : 'Nessun addebito'}</span></div>
+      ${p.debits ? `<div class="sub">Addebiti diretti: ${eur(p.debits)}</div>` : ''}
+      ${p.out.map((t) => `<div class="sub">Giroconto verso ${esc(accName(t.accountId))}: ${eur(t.amount)}</div>`).join('')}
+      ${p.in.map((t) => `<div class="sub">Giroconto da ${esc(accName(t.accountId))}: +${eur(t.amount)}</div>`).join('')}
+      ${p.income ? `<div class="sub">Entrate accreditate: +${eur(p.income)}</div>` : ''}
+      <div class="sub">Variazione del mese: ${p.balanceChange >= 0 ? '+' : ''}${eur(p.balanceChange)}</div></div>`).join('');
   return `
     <div class="card">
       <div class="riga"><span>Entrate</span><span class="imp">${eur(s.totalIncome)}</span></div>
@@ -126,6 +134,7 @@ function viewMese() {
       <div class="grande ${s.remaining >= 0 ? 'pos' : 'neg'}">${eur(s.remaining)}</div>
     </div>
     <h2>Giroconti del mese</h2>${giro}
+    <h2>Cosa serve sui conti</h2>${plan}
     <h2>Entrate</h2>
     ${incomesForMonth(data, month).map((o) => `<div class="card"><div class="riga"><span>${esc(o.label)} · ${esc(data.people.find((p) => p.id === o.personId)?.name ?? '')}</span><span class="imp">${eur(o.amount)}</span></div>
       <button class="act" data-amount="${esc(o.sourceId)}" data-akind="entrata">Cambia importo</button></div>`).join('')}

@@ -2,11 +2,22 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  occurrencesForMonth, loanStatus, transfers, dueStatus, monthSummary, addMonths, dateInMonth,
+  occurrencesForMonth, loanStatus, transfers, dueStatus, monthSummary, addMonths, dateInMonth, accountPlan,
 } from '../src/engine.js';
 
 const data = JSON.parse(readFileSync(new URL('../data/sample.json', import.meta.url), 'utf8'));
 const labels = (m) => occurrencesForMonth(data, m).map((o) => o.sourceId);
+
+test('accountPlan: il cointestato riceve esattamente ciò che deve pagare e i giroconti quadrano', () => {
+  const d = structuredClone(data);
+  d.accounts.push({ id: 'acc-lui2', owner: 'lui', bank: 'X' });
+  d.recurring.push({ id: 'r-extra', label: 'Extra', amount: 100, accountId: 'acc-lui2', category: 'altro', startMonth: '2026-01', everyMonths: 1, day: 3 });
+  const plan = accountPlan(d, '2026-03');
+  const by = (id) => plan.find((p) => p.accountId === id);
+  assert.equal(by('acc-lui2').in.find((t) => t.accountId === 'acc-lui').amount, 100);
+  assert.equal(by('acc-comune').balanceChange, 0);
+  assert.equal(by('acc-comune').in.reduce((s, t) => s + t.amount, 0), by('acc-comune').debits);
+});
 
 test('frequenze: mensile, bimestrale, trimestrale, annuale', () => {
   const nov = labels('2026-11');

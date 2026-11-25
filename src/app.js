@@ -23,7 +23,7 @@ let editing = null;
 let amountEdit = null;
 let allowedEmails = [];
 let settingsSec = 'generale';
-const SETTINGS_SECTIONS = { generale: 'Generale', entrate: 'Entrate', categorie: 'Categorie', dati: 'Cloud e dati' };
+const SETTINGS_SECTIONS = { generale: 'Persone', conti: 'Conti', entrate: 'Entrate', categorie: 'Categorie', dati: 'Cloud e dati' };
 
 const SYNC_LABEL = { locale: '', ok: '☁ sincronizzato', sync: '☁ …', offline: '☁ offline' };
 cloud.onStatus((s) => { $('#sync').textContent = SYNC_LABEL[s] ?? ''; });
@@ -80,9 +80,11 @@ function viewCloud() {
     <button class="act" id="logout">Esci</button></div>`;
 }
 
+const ownerLabel = (o) => (o === 'comune' ? 'cointestato' : data.people.find((p) => p.id === o)?.name ?? o);
+const accountLabel = (a) => `Conto ${ownerLabel(a.owner)}${a.bank ? ` · ${a.bank}` : ''}`;
 const accName = (id) => {
   const a = data.accounts.find((x) => x.id === id);
-  return a ? (a.bank ? `${a.name} · ${a.bank}` : a.name) : id;
+  return a ? accountLabel(a) : id;
 };
 
 function viewPagare() {
@@ -150,9 +152,12 @@ function viewImpostazioni() {
     <label>Giorno di accredito<input name="i:${i.id}:day" type="number" min="1" max="31" value="${i.day}" required></label>
     <label>Di chi<select name="i:${i.id}:personId">${personOptions(i.personId)}</select></label>
     <label>Conto di accredito<select name="i:${i.id}:accountId">${accountOptions(i.accountId)}</select></label></div>`).join('');
-  const people = data.people.map((p) => `<label>Nome (${p.id === 'lui' ? 'lui' : 'lei'})<input name="p:${p.id}" value="${esc(p.name)}" required></label>`).join('');
-  const accs = data.accounts.map((a) => `<div class="card"><strong>${esc(a.name)}</strong>
-    <label>Nome conto<input name="a:${a.id}:name" value="${esc(a.name)}" required></label>
+  const people = data.people.map((p) => `<div class="card"><div class="riga"><strong>${esc(p.name)}</strong>
+    <button type="button" class="act" data-delperson="${esc(p.id)}">Elimina</button></div>
+    <label>Nome<input name="p:${p.id}" value="${esc(p.name)}" required></label></div>`).join('');
+  const accs = data.accounts.map((a) => `<div class="card"><div class="riga"><strong>${esc(accountLabel(a))}</strong>
+    <button type="button" class="act" data-delacc="${esc(a.id)}">Elimina</button></div>
+    <label>Intestatario<select name="a:${a.id}:owner">${ownerOptions(a.owner)}</select></label>
     <label>Banca (facoltativo)<input name="a:${a.id}:bank" value="${esc(a.bank ?? '')}"></label>
     <label>Numero / IBAN (facoltativo, anche parziale)<input name="a:${a.id}:number" value="${esc(a.number ?? '')}"></label></div>`).join('');
   const cats = data.categories.map((c) => `<div class="card"><div class="riga"><strong>${esc(c.label)}</strong>
@@ -163,8 +168,9 @@ function viewImpostazioni() {
     `<button type="button" data-sec="${k}" class="${k === settingsSec ? 'on' : ''}">${v}</button>`).join('')}</div>`;
   const save = '<button class="pri" type="submit">Salva</button>';
   const body = {
-    generale: `<form id="settings"><h2>Persone</h2><div class="card">${people}</div>
-      <h2>Conti</h2>${accs}
+    generale: `<form id="settings">${people}<button type="button" class="act" id="add-person">+ Aggiungi persona</button>
+      <p class="sub">Le spese comuni si dividono in parti uguali tra le persone.</p>${save}</form>`,
+    conti: `<form id="settings">${accs}<button type="button" class="act" id="add-account">+ Aggiungi conto</button>
       <h2>Carta di credito</h2><div class="card"><label>Conto di addebito predefinito<select name="cc:holder">${accountOptions(data.creditCard.holderAccountId)}</select></label>
         <p class="sub">Puoi cambiarlo mese per mese quando inserisci il totale in "Aggiungi".</p></div>${save}</form>`,
     entrate: `<form id="settings">${incomes}<button type="button" class="act" id="add-income">+ Aggiungi entrata</button>${save}</form>`,
@@ -229,7 +235,11 @@ function submitSettings(f) {
 }
 
 function accountOptions(selected) {
-  return data.accounts.map((a) => `<option value="${esc(a.id)}"${a.id === selected ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
+  return data.accounts.map((a) => `<option value="${esc(a.id)}"${a.id === selected ? ' selected' : ''}>  ${esc(accountLabel(a))}</option>`).join('');
+}
+
+function ownerOptions(selected) {
+  return `${personOptions(selected)}<option value="comune"${selected === 'comune' ? ' selected' : ''}>Cointestato</option>`;
 }
 
 const emptyDraft = (kind) => (kind === 'ricorrente'
@@ -382,10 +392,41 @@ function render() {
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
+  if ((t.dataset.tab || t.dataset.sec) && $('#settings')) applySettings($('#settings'));
   if (t.dataset.tab) { tab = t.dataset.tab; draft = null; editing = null; amountEdit = null; render(); }
   else if (t.dataset.sec) { settingsSec = t.dataset.sec; render(); }
   else if (t.dataset.amount) { amountEdit = { sourceId: t.dataset.amount, month }; tab = 'aggiungi'; render(); }
   else if (t.id === 'cancel-amount') { amountEdit = null; tab = 'mese'; render(); }
+  else if (t.id === 'add-person') {
+    applySettings($('#settings'));
+    data.people.push({ id: newId('per'), name: 'Nuova persona' });
+    delete data.splitRule;
+    saveData(data); render();
+  } else if (t.dataset.delperson) {
+    applySettings($('#settings'));
+    const id = t.dataset.delperson;
+    const used = data.accounts.some((a) => a.owner === id) || data.incomes.some((i) => i.personId === id);
+    if (used) alert('Questa persona ha conti o entrate: cambia o elimina prima quelli.');
+    else if (data.people.length > 1 && confirm('Eliminare la persona?')) {
+      data.people = data.people.filter((p) => p.id !== id);
+      delete data.splitRule;
+      saveData(data);
+    }
+    render();
+  }
+  else if (t.id === 'add-account') {
+    applySettings($('#settings'));
+    data.accounts.push({ id: newId('acc'), owner: data.people[0].id, bank: '', number: '' });
+    saveData(data); render();
+  } else if (t.dataset.delacc) {
+    applySettings($('#settings'));
+    const id = t.dataset.delacc;
+    const used = data.incomes.some((i) => i.accountId === id) || data.recurring.some((r) => r.accountId === id)
+      || data.loans.some((l) => l.accountId === id) || data.creditCard.holderAccountId === id;
+    if (used) alert('Questo conto è usato da entrate, spese, prestiti o carta: cambia prima il conto in quelle voci.');
+    else if (data.accounts.length > 1 && confirm('Eliminare il conto?')) { data.accounts = data.accounts.filter((a) => a.id !== id); saveData(data); }
+    render();
+  }
   else if (t.id === 'add-category') {
     applySettings($('#settings'));
     data.categories.push({ id: newId('cat'), label: 'Nuova categoria', presets: [] });

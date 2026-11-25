@@ -1,0 +1,29 @@
+:root { --bg:#f5f6f8; --card:#fff; --txt:#1c2128; --mut:#6b7280; --ok:#1a7f37; --warn:#b7791f; --bad:#cf222e; --acc:#1f6feb; }
+* { box-sizing: border-box; }
+body { margin:0; font:16px/1.4 system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--txt); padding-bottom:70px; }
+header { padding:env(safe-area-inset-top) 16px 0; background:var(--acc); color:#fff; }
+header h1 { margin:0; padding:12px 0; font-size:1.2rem; }
+.mese-nav { display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; font-weight:600; text-transform:capitalize; }
+.mese-nav button { background:none; border:0; color:#fff; font-size:1.6rem; padding:0 12px; }
+main { padding:12px; max-width:640px; margin:auto; }
+nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid #ddd; padding-bottom:env(safe-area-inset-bottom); }
+nav button { flex:1; padding:14px 0; border:0; background:none; font-size:.95rem; color:var(--mut); }
+nav button.on { color:var(--acc); font-weight:700; }
+.card { background:var(--card); border-radius:10px; padding:12px; margin-bottom:10px; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.riga { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+.sub { color:var(--mut); font-size:.85rem; }
+.imp { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
+.badge { font-size:.75rem; padding:2px 8px; border-radius:99px; color:#fff; }
+.scaduto { background:var(--bad); } .in_scadenza { background:var(--warn); } .pagato { background:var(--ok); } .futuro { background:#9ca3af; }
+.card.st-scaduto { border-left:4px solid var(--bad); } .card.st-in_scadenza { border-left:4px solid var(--warn); }
+.card.st-pagato { opacity:.6; }
+h2 { font-size:1rem; margin:16px 0 8px; }
+.grande { font-size:1.6rem; font-weight:700; }
+.pos { color:var(--ok); } .neg { color:var(--bad); }
+button.act { border:1px solid var(--acc); background:none; color:var(--acc); border-radius:6px; padding:4px 10px; margin-top:6px; }
+button.pri { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:12px; width:100%; font-size:1rem; }
+label { display:block; margin:8px 0; font-size:.9rem; color:var(--mut); }
+input, select { width:100%; padding:10px; font-size:1rem; border:1px solid #ccc; border-radius:6px; margin-top:2px; }
+.tabs { display:flex; gap:6px; margin-bottom:10px; }
+.tabs button { flex:1; padding:8px; border:1px solid #ccc; border-radius:6px; background:#fff; }
+.tabs button.on { background:var(--acc); color:#fff; border-color:var(--acc); }

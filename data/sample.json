@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "splitRule": { "lui": 0.5, "lei": 0.5 },
+  "people": [
+    { "id": "lui", "name": "Marco" },
+    { "id": "lei", "name": "Giulia" }
+  ],
+  "accounts": [
+    { "id": "acc-lui", "name": "Conto Marco", "owner": "lui" },
+    { "id": "acc-lei", "name": "Conto Giulia", "owner": "lei" },
+    { "id": "acc-comune", "name": "Conto cointestato", "owner": "comune" }
+  ],
+  "incomes": [
+    { "id": "inc-lui", "label": "Stipendio Marco", "personId": "lui", "accountId": "acc-lui", "amount": 1950, "day": 27 },
+    { "id": "inc-lei", "label": "Stipendio Giulia", "personId": "lei", "accountId": "acc-lei", "amount": 1900, "day": 27 }
+  ],
+  "recurring": [
+    { "id": "rec-mutuo", "label": "Mutuo casa", "category": "casa", "amount": 780, "estimated": false, "everyMonths": 1, "startMonth": "2026-01", "day": 1, "accountId": "acc-comune" },
+    { "id": "rec-polizza-casa", "label": "Polizza casa", "category": "assicurazioni", "amount": 310, "estimated": false, "everyMonths": 12, "startMonth": "2026-03", "day": 15, "accountId": "acc-comune" },
+    { "id": "rec-assic-auto", "label": "Assicurazione auto", "category": "assicurazioni", "amount": 540, "estimated": false, "everyMonths": 12, "startMonth": "2026-06", "day": 20, "accountId": "acc-lui" },
+    { "id": "rec-luce", "label": "Luce", "category": "utenze", "amount": 95, "estimated": true, "everyMonths": 2, "startMonth": "2026-01", "day": 12, "accountId": "acc-comune" },
+    { "id": "rec-gas", "label": "Gas", "category": "utenze", "amount": 120, "estimated": true, "everyMonths": 2, "startMonth": "2026-02", "day": 18, "accountId": "acc-comune" },
+    { "id": "rec-condominio", "label": "Condominio", "category": "casa", "amount": 210, "estimated": false, "everyMonths": 3, "startMonth": "2026-01", "day": 10, "accountId": "acc-lei" },
+    { "id": "rec-internet", "label": "Internet", "category": "utenze", "amount": 29.9, "estimated": false, "everyMonths": 1, "startMonth": "2026-01", "day": 8, "accountId": "acc-comune" },
+    { "id": "rec-tari", "label": "TARI", "category": "utenze", "amount": 140, "estimated": true, "everyMonths": 6, "startMonth": "2026-04", "day": 30, "accountId": "acc-comune" }
+  ],
+  "loans": [
+    { "id": "loan-auto", "label": "Finanziamento auto", "installment": 285, "totalInstallments": 60, "remainingInstallments": 34, "asOfMonth": "2026-11", "day": 5, "accountId": "acc-lui" },
+    { "id": "loan-cucina", "label": "Prestito cucina", "installment": 150, "totalInstallments": 24, "remainingInstallments": 9, "asOfMonth": "2026-11", "day": 10, "accountId": "acc-lei" }
+  ],
+  "creditCard": {
+    "label": "Carta di credito familiare",
+    "holderAccountId": "acc-lei",
+    "chargeDay": 5,
+    "monthly": [
+      { "month": "2026-09", "total": 610.4 },
+      { "month": "2026-10", "total": 702.15, "items": [
+        { "label": "Spesa", "amount": 420.15 },
+        { "label": "Ristoranti", "amount": 182 },
+        { "label": "Abbonamenti", "amount": 100 }
+      ] },
+      { "month": "2026-11", "total": 650 }
+    ]
+  },
+  "payments": [
+    { "key": "rec-mutuo|2026-10", "paidOn": "2026-10-01" },
+    { "key": "cc|2026-10", "paidOn": "2026-10-05" },
+    { "key": "rec-internet|2026-10", "paidOn": "2026-10-08" },
+    { "key": "rec-condominio|2026-10", "paidOn": "2026-10-10" },
+    { "key": "rec-gas|2026-10", "paidOn": "2026-10-18" },
+    { "key": "rec-tari|2026-10", "paidOn": "2026-10-30" },
+    { "key": "loan-auto|2026-10", "paidOn": "2026-10-05" },
+    { "key": "rec-mutuo|2026-11", "paidOn": "2026-11-01" },
+    { "key": "rec-internet|2026-11", "paidOn": "2026-11-08" },
+    { "key": "loan-auto|2026-11", "paidOn": "2026-11-05" },
+    { "key": "cc|2026-11", "paidOn": "2026-11-05" }
+  ]
+}

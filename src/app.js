@@ -72,6 +72,7 @@ function viewCloud() {
   const partner = allowedEmails.find((e) => e !== cloud.getEmail()) ?? '';
   return `<h2>Cloud</h2><div class="card"><p class="sub">Connesso come ${esc(cloud.getEmail() ?? '')}</p>
     <form id="partner"><label>E-mail del partner (può accedere agli stessi dati)<input name="partner" type="email" value="${esc(partner)}"></label>
+      <p id="partner-msg" class="sub" role="status">${partner ? `Salvata nel cloud: ${esc(partner)}` : 'Nessun partner collegato.'}</p>
       <button class="act" type="submit">Salva partner</button></form>
     <button class="act" id="logout">Esci</button></div>`;
 }
@@ -434,7 +435,11 @@ document.addEventListener('submit', (e) => {
     e.preventDefault();
     const p = new FormData(e.target).get('partner').trim().toLowerCase();
     allowedEmails = [cloud.getEmail(), ...(p ? [p] : [])];
-    cloud.push(data, allowedEmails).then(() => alert('Salvato.')).catch((err) => alert(`Errore: ${err.message}`));
+    const msg = $('#partner-msg');
+    msg.textContent = 'Salvataggio…';
+    cloud.push(data, allowedEmails)
+      .then(() => { msg.textContent = p ? `Salvata nel cloud: ${p}` : 'Partner rimosso.'; })
+      .catch((err) => { msg.textContent = `Errore: ${err.message}`; });
   }
   else if (e.target.id === 'settings') { e.preventDefault(); submitSettings(e.target); }
 });

@@ -77,7 +77,7 @@ export function occurrencesForMonth(data, month) {
     if (prev) {
       out.push({
         key: occurrenceKey('cc', month), sourceId: 'cc', kind: 'carta', label: `${cc.label} (spese ${prev.month})`,
-        amount: prev.total, estimated: false, date: dateInMonth(month, cc.chargeDay ?? 5), accountId: cc.holderAccountId,
+        amount: prev.total, estimated: false, date: dateInMonth(month, cc.chargeDay ?? 5), accountId: prev.accountId ?? cc.holderAccountId,
       });
     }
   }
@@ -85,9 +85,19 @@ export function occurrencesForMonth(data, month) {
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
 }
 
+export const INCOME_TYPES = { stipendio: 'Stipendio', altro: 'Altra entrata' };
+
+export function incomeLabel(i, data) {
+  if (i.type === 'stipendio') {
+    const p = data.people.find((x) => x.id === i.personId);
+    return `Stipendio ${p?.name ?? ''}`.trim();
+  }
+  return i.label || 'Entrata';
+}
+
 export function incomesForMonth(data, month) {
   return (data.incomes ?? []).map((i) => ({
-    key: occurrenceKey(i.id, month), sourceId: i.id, label: i.label, personId: i.personId,
+    key: occurrenceKey(i.id, month), sourceId: i.id, type: i.type, label: incomeLabel(i, data), personId: i.personId,
     amount: i.amount, date: dateInMonth(month, i.day), accountId: i.accountId,
   }));
 }

@@ -55,6 +55,15 @@ test('giroconti: totale/2 - uscite sui propri conti, somma = uscite sul cointest
   assert.equal(lei.ownExpenses, 150 + 702.15);
 });
 
+test('carta: conto di addebito scelto per singolo mese', () => {
+  const custom = structuredClone(data);
+  custom.creditCard.monthly.find((m) => m.month === '2026-10').accountId = 'acc-lui';
+  assert.equal(occurrencesForMonth(custom, '2026-11').find((o) => o.sourceId === 'cc').accountId, 'acc-lui');
+  assert.equal(occurrencesForMonth(custom, '2026-12').find((o) => o.sourceId === 'cc').accountId, 'acc-lei');
+  const t = transfers(custom, '2026-11');
+  assert.equal(t.people.lui.ownExpenses, 285 + 702.15);
+});
+
 test('giroconto negativo: il cointestato gira alla persona', () => {
   const custom = { ...data, recurring: [], loans: [], creditCard: { ...data.creditCard, monthly: [{ month: '2026-10', total: 1000 }] } };
   const t = transfers(custom, '2026-11');
@@ -69,6 +78,14 @@ test('dueStatus', () => {
   assert.equal(dueStatus(occ, '2026-11-15'), 'in_scadenza');
   assert.equal(dueStatus(occ, '2026-11-01'), 'futuro');
   assert.equal(dueStatus(occ, '2026-11-25', [{ key: 'x|2026-11' }]), 'pagato');
+});
+
+test('entrate: lo stipendio usa il nome attuale della persona', () => {
+  const custom = structuredClone(data);
+  custom.people[0].name = 'Idod';
+  custom.incomes.push({ id: 'inc-x', type: 'altro', label: 'Affitto box', personId: 'lei', accountId: 'acc-lei', amount: 100, day: 5 });
+  const labelsOut = monthSummary(custom, '2026-11').incomes.map((i) => i.label);
+  assert.deepEqual(labelsOut, ['Stipendio Idod', 'Stipendio Sandra', 'Affitto box']);
 });
 
 test('riepilogo mese', () => {

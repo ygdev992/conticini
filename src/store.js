@@ -2,8 +2,16 @@ const KEY = 'conticini-data-v1';
 
 export async function loadData() {
   const saved = localStorage.getItem(KEY);
-  if (saved) return JSON.parse(saved);
+  if (saved) return migrate(JSON.parse(saved));
   return resetData();
+}
+
+// Dati salvati con la vecchia struttura: le entrate non avevano il tipo.
+export function migrate(data) {
+  for (const i of data.incomes ?? []) {
+    if (!i.type) i.type = /^stipendio/i.test(i.label ?? '') ? 'stipendio' : 'altro';
+  }
+  return data;
 }
 
 export async function resetData() {

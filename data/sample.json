@@ -11,8 +11,8 @@
     { "id": "acc-comune", "name": "Conto cointestato", "owner": "comune", "bank": "", "number": "" }
   ],
   "incomes": [
-    { "id": "inc-lui", "label": "Stipendio Ygor", "personId": "lui", "accountId": "acc-lui", "amount": 1950, "day": 27 },
-    { "id": "inc-lei", "label": "Stipendio Sandra", "personId": "lei", "accountId": "acc-lei", "amount": 1950, "day": 23 }
+    { "id": "inc-lui", "type": "stipendio", "personId": "lui", "accountId": "acc-lui", "amount": 1950, "day": 27 },
+    { "id": "inc-lei", "type": "stipendio", "personId": "lei", "accountId": "acc-lei", "amount": 1950, "day": 23 }
   ],
   "recurring": [
     { "id": "rec-mutuo", "label": "Mutuo casa", "category": "casa", "amount": 780, "estimated": false, "everyMonths": 1, "startMonth": "2026-01", "day": 1, "accountId": "acc-comune" },

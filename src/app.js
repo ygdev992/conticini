@@ -1,5 +1,5 @@
-import { dueList, monthSummary, loanStatus, addMonths } from './engine.js';
-import { loadData, saveData, resetData, newId } from './store.js';
+import { dueList, monthSummary, loanStatus, addMonths, incomeLabel, INCOME_TYPES } from './engine.js';
+import { loadData, saveData, resetData, newId, migrate } from './store.js';
 
 const $ = (s) => document.querySelector(s);
 const eur = (n) => n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
@@ -68,13 +68,30 @@ function viewMese() {
     ${loans ? `<h2>Prestiti</h2>${loans}` : ''}`;
 }
 
+function personOptions(selected) {
+  return data.people.map((p) => `<option value="${esc(p.id)}"${p.id === selected ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+}
+
 function viewImpostazioni() {
+  const incomes = data.incomes.map((i) => `<div class="card"><div class="riga"><strong>${esc(incomeLabel(i, data))}</strong>
+    <button type="button" class="act" data-delinc="${esc(i.id)}">Elimina</button></div>
+    <label>Tipo<select name="i:${i.id}:type" data-retype>${Object.entries(INCOME_TYPES).map(([k, v]) =>
+      `<option value="${k}"${k === i.type ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+    ${i.type === 'stipendio' ? '' : `<label>Descrizione<input name="i:${i.id}:label" value="${esc(i.label ?? '')}" required></label>`}
+    <label>Importo mensile (€)<input name="i:${i.id}:amount" type="number" step="0.01" min="0" value="${i.amount}" required></label>
+    <label>Giorno di accredito<input name="i:${i.id}:day" type="number" min="1" max="31" value="${i.day}" required></label>
+    <label>Di chi<select name="i:${i.id}:personId">${personOptions(i.personId)}</select></label>
+    <label>Conto di accredito<select name="i:${i.id}:accountId">${accountOptions(i.accountId)}</select></label></div>`).join('');
   const people = data.people.map((p) => `<label>Nome (${p.id === 'lui' ? 'lui' : 'lei'})<input name="p:${p.id}" value="${esc(p.name)}" required></label>`).join('');
   const accs = data.accounts.map((a) => `<div class="card"><strong>${esc(a.name)}</strong>
     <label>Nome conto<input name="a:${a.id}:name" value="${esc(a.name)}" required></label>
     <label>Banca (facoltativo)<input name="a:${a.id}:bank" value="${esc(a.bank ?? '')}"></label>
     <label>Numero / IBAN (facoltativo, anche parziale)<input name="a:${a.id}:number" value="${esc(a.number ?? '')}"></label></div>`).join('');
-  return `<form id="settings"><h2>Persone</h2><div class="card">${people}</div><h2>Conti</h2>${accs}<button class="pri" type="submit">Salva</button></form>
+  return `<form id="settings"><h2>Persone</h2><div class="card">${people}</div>
+    <h2>Entrate</h2>${incomes}<button type="button" class="act" id="add-income">+ Aggiungi entrata</button>
+    <h2>Carta di credito</h2><div class="card"><label>Conto di addebito predefinito<select name="cc:holder">${accountOptions(data.creditCard.holderAccountId)}</select></label>
+      <p class="sub">Puoi cambiarlo mese per mese quando inserisci il totale in "Aggiungi".</p></div>
+    <h2>Conti</h2>${accs}<button class="pri" type="submit">Salva</button></form>
     <h2>Backup</h2>
     <div class="card"><p class="sub">I dati stanno solo su questo dispositivo: esporta un file di backup ogni tanto.</p>
       <button class="act" id="export">Esporta dati (file JSON)</button>
@@ -96,7 +113,7 @@ async function importData(file) {
     const ok = ['people', 'accounts', 'incomes', 'recurring', 'loans', 'creditCard', 'payments'].every((k) => k in next);
     if (!ok) throw new Error('struttura non valida');
     if (!confirm('Sostituire tutti i dati attuali con quelli del file?')) return;
-    data = next;
+    data = migrate(next);
     saveData(data);
     tab = 'mese';
     render();
@@ -105,18 +122,28 @@ async function importData(file) {
   }
 }
 
-function submitSettings(f) {
+function applySettings(f) {
   for (const [k, val] of new FormData(f)) {
+    if (k === 'cc:holder') { data.creditCard.holderAccountId = val; continue; }
     const [kind, id, field] = k.split(':');
+    if (kind === 'i') {
+      const inc = data.incomes.find((x) => x.id === id);
+      inc[field] = ['amount', 'day'].includes(field) ? +val : val.trim();
+      continue;
+    }
     if (kind === 'p') data.people.find((p) => p.id === id).name = val.trim();
     else data.accounts.find((a) => a.id === id)[field] = val.trim();
   }
   saveData(data);
+}
+
+function submitSettings(f) {
+  applySettings(f);
   render();
 }
 
-function accountOptions() {
-  return data.accounts.map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+function accountOptions(selected) {
+  return data.accounts.map((a) => `<option value="${esc(a.id)}"${a.id === selected ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
 }
 
 function viewAggiungi() {
@@ -143,7 +170,8 @@ function viewAggiungi() {
   } else {
     form = `<label>Mese di spesa<input name="month" type="month" value="${addMonths(todayStr().slice(0, 7), -1)}" required></label>
       <label>Totale (€)<input name="total" type="number" step="0.01" min="0" required></label>
-      <p class="sub">Verrà addebitato il giorno ${data.creditCard.chargeDay} del mese dopo sul conto di ${esc(accName(data.creditCard.holderAccountId))}. Se il mese esiste già viene aggiornato.</p>`;
+      <label>Conto di addebito<select name="accountId">${accountOptions(data.creditCard.holderAccountId)}</select></label>
+      <p class="sub">Verrà addebitato il giorno ${data.creditCard.chargeDay} del mese dopo. Se il mese esiste già viene aggiornato.</p>`;
   }
   return `${tabs}<form id="form" class="card">${form}<button class="pri" type="submit">Salva</button></form>
     <button class="act" id="clear">Inizia da zero (svuota spese di esempio)</button>
@@ -161,7 +189,7 @@ function submitForm(f) {
   } else {
     const list = data.creditCard.monthly;
     const ex = list.find((x) => x.month === v.month);
-    if (ex) ex.total = +v.total; else list.push({ month: v.month, total: +v.total });
+    if (ex) { ex.total = +v.total; ex.accountId = v.accountId; } else list.push({ month: v.month, total: +v.total, accountId: v.accountId });
   }
   saveData(data);
   tab = 'mese';
@@ -183,7 +211,15 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.tab) { tab = t.dataset.tab; render(); }
   else if (t.id === 'prev') { month = addMonths(month, -1); render(); }
   else if (t.id === 'next') { month = addMonths(month, 1); render(); }
-  else if (t.id === 'export') exportData();
+  else if (t.id === 'add-income') {
+    applySettings($('#settings'));
+    data.incomes.push({ id: newId('inc'), type: 'altro', label: 'Nuova entrata', personId: data.people[0].id, accountId: data.accounts[0].id, amount: 0, day: 1 });
+    saveData(data); render();
+  } else if (t.dataset.delinc && confirm('Eliminare questa entrata?')) {
+    applySettings($('#settings'));
+    data.incomes = data.incomes.filter((i) => i.id !== t.dataset.delinc);
+    saveData(data); render();
+  } else if (t.id === 'export') exportData();
   else if (t.dataset.kind) { addKind = t.dataset.kind; render(); }
   else if (t.dataset.pay) {
     data.payments.push({ key: t.dataset.pay, paidOn: todayStr() });
@@ -201,6 +237,7 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.dataset.retype !== undefined) { applySettings($('#settings')); render(); return; }
   if (e.target.id === 'import' && e.target.files[0]) importData(e.target.files[0]);
 });
 

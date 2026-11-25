@@ -9,7 +9,12 @@ header h1 { margin:0; padding:12px 0; font-size:1.2rem; }
 .mese-nav button { background:none; border:0; color:#fff; font-size:1.6rem; padding:0 12px; }
 main { padding:12px; max-width:640px; margin:auto; }
 nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid #ddd; padding-bottom:env(safe-area-inset-bottom); }
-nav button { flex:1; padding:14px 0; border:0; background:none; font-size:.95rem; color:var(--mut); }
+nav button { flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 2px; border:0; background:none; font-size:.72rem; white-space:nowrap; color:var(--mut); }
+nav .ico { font-size:1.3rem; line-height:1; }
+label.chk { display:flex; align-items:center; gap:8px; }
+label.chk input { width:auto; margin:0; }
+.tabs { flex-wrap:wrap; }
+.tabs button { font-size:.85rem; }
 nav button.on { color:var(--acc); font-weight:700; }
 .card { background:var(--card); border-radius:10px; border-left:4px solid transparent; padding:12px; margin-bottom:10px; box-shadow:0 1px 2px rgba(0,0,0,.08); }
 .riga { display:flex; justify-content:space-between; gap:8px; align-items:center; }

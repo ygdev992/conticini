@@ -22,6 +22,8 @@ let draft = null;
 let editing = null;
 let amountEdit = null;
 let allowedEmails = [];
+let settingsSec = 'generale';
+const SETTINGS_SECTIONS = { generale: 'Generale', entrate: 'Entrate', categorie: 'Categorie', dati: 'Cloud e dati' };
 
 const SYNC_LABEL = { locale: '', ok: '☁ sincronizzato', sync: '☁ …', offline: '☁ offline' };
 cloud.onStatus((s) => { $('#sync').textContent = SYNC_LABEL[s] ?? ''; });
@@ -44,6 +46,7 @@ function viewLogin() {
   return `<form id="login" class="card"><p class="sub">Accedi per sincronizzare i dati tra i vostri telefoni.</p>
     <label>E-mail<input name="email" type="email" autocomplete="email" required></label>
     <label>Password<input name="password" type="password" minlength="6" autocomplete="current-password" required></label>
+    <label class="chk"><input type="checkbox" id="show-pw"> Mostra password</label>
     <p id="login-msg" class="sub" role="status"></p>
     <button class="pri" type="submit" value="in">Accedi</button>
     <button class="act" type="submit" value="up" formnovalidate>Crea account</button></form>`;
@@ -156,17 +159,23 @@ function viewImpostazioni() {
     <button type="button" class="act" data-delcat="${esc(c.id)}">Elimina</button></div>
     <label>Nome categoria<input name="c:${c.id}:label" value="${esc(c.label)}" required></label>
     <label>Voci suggerite (una per riga: nome, ogni quanti mesi, "stimato")<textarea name="c:${c.id}:presets" rows="4">${esc(presetsToText(c.presets))}</textarea></label></div>`).join('');
-  return `<form id="settings"><h2>Persone</h2><div class="card">${people}</div>
-    <h2>Entrate</h2>${incomes}<button type="button" class="act" id="add-income">+ Aggiungi entrata</button>
-    <h2>Categorie spese</h2>${cats}<button type="button" class="act" id="add-category">+ Aggiungi categoria</button>
-    <h2>Carta di credito</h2><div class="card"><label>Conto di addebito predefinito<select name="cc:holder">${accountOptions(data.creditCard.holderAccountId)}</select></label>
-      <p class="sub">Puoi cambiarlo mese per mese quando inserisci il totale in "Aggiungi".</p></div>
-    <h2>Conti</h2>${accs}<button class="pri" type="submit">Salva</button></form>
-        ${viewCloud()}
-    <h2>Backup</h2>
-    <div class="card"><p class="sub">I dati stanno solo su questo dispositivo: esporta un file di backup ogni tanto.</p>
-      <button class="act" id="export">Esporta dati (file JSON)</button>
-      <label>Importa da file (sostituisce i dati attuali)<input id="import" type="file" accept="application/json,.json"></label></div>`;
+  const tabs = `<div class="tabs">${Object.entries(SETTINGS_SECTIONS).map(([k, v]) =>
+    `<button type="button" data-sec="${k}" class="${k === settingsSec ? 'on' : ''}">${v}</button>`).join('')}</div>`;
+  const save = '<button class="pri" type="submit">Salva</button>';
+  const body = {
+    generale: `<form id="settings"><h2>Persone</h2><div class="card">${people}</div>
+      <h2>Conti</h2>${accs}
+      <h2>Carta di credito</h2><div class="card"><label>Conto di addebito predefinito<select name="cc:holder">${accountOptions(data.creditCard.holderAccountId)}</select></label>
+        <p class="sub">Puoi cambiarlo mese per mese quando inserisci il totale in "Aggiungi".</p></div>${save}</form>`,
+    entrate: `<form id="settings">${incomes}<button type="button" class="act" id="add-income">+ Aggiungi entrata</button>${save}</form>`,
+    categorie: `<form id="settings">${cats}<button type="button" class="act" id="add-category">+ Aggiungi categoria</button>${save}</form>`,
+    dati: `${viewCloud()}
+      <h2>Backup</h2>
+      <div class="card"><p class="sub">Esporta un file di backup ogni tanto.</p>
+        <button class="act" id="export">Esporta dati (file JSON)</button>
+        <label>Importa da file (sostituisce i dati attuali)<input id="import" type="file" accept="application/json,.json"></label></div>`,
+  }[settingsSec];
+  return tabs + body;
 }
 
 function exportData() {
@@ -374,6 +383,7 @@ document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
   if (t.dataset.tab) { tab = t.dataset.tab; draft = null; editing = null; amountEdit = null; render(); }
+  else if (t.dataset.sec) { settingsSec = t.dataset.sec; render(); }
   else if (t.dataset.amount) { amountEdit = { sourceId: t.dataset.amount, month }; tab = 'aggiungi'; render(); }
   else if (t.id === 'cancel-amount') { amountEdit = null; tab = 'mese'; render(); }
   else if (t.id === 'add-category') {
@@ -423,6 +433,7 @@ document.addEventListener('change', (e) => {
     render();
     return;
   }
+  if (e.target.id === 'show-pw') { document.querySelector('#login [name=password]').type = e.target.checked ? 'text' : 'password'; return; }
   if (e.target.dataset.retype !== undefined) { applySettings($('#settings')); render(); return; }
   if (e.target.id === 'import' && e.target.files[0]) importData(e.target.files[0]);
 });
@@ -459,4 +470,16 @@ document.addEventListener('visibilitychange', async () => {
     if (await cloud.remoteChanged()) { await syncFromCloud(); render(); }
   } catch { /* offline */ }
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update(); });
+  });
+  // Nuova versione attivata: ricarica una sola volta per usare i file aggiornati.
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
+}

@@ -73,6 +73,6 @@ test('dueStatus', () => {
 
 test('riepilogo mese', () => {
   const s = monthSummary(data, '2026-11');
-  assert.equal(s.totalIncome, 3850);
+  assert.equal(s.totalIncome, 3900);
   assert.equal(Math.round((s.totalIncome - s.totalExpenses) * 100) / 100, s.remaining);
 });

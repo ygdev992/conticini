@@ -2,17 +2,17 @@
   "version": 1,
   "splitRule": { "lui": 0.5, "lei": 0.5 },
   "people": [
-    { "id": "lui", "name": "Marco" },
-    { "id": "lei", "name": "Giulia" }
+    { "id": "lui", "name": "Ygor" },
+    { "id": "lei", "name": "Sandra" }
   ],
   "accounts": [
-    { "id": "acc-lui", "name": "Conto Marco", "owner": "lui" },
-    { "id": "acc-lei", "name": "Conto Giulia", "owner": "lei" },
-    { "id": "acc-comune", "name": "Conto cointestato", "owner": "comune" }
+    { "id": "acc-lui", "name": "Conto Ygor", "owner": "lui", "bank": "Intesa", "number": "" },
+    { "id": "acc-lei", "name": "Conto Sandra", "owner": "lei", "bank": "Buddybank", "number": "" },
+    { "id": "acc-comune", "name": "Conto cointestato", "owner": "comune", "bank": "", "number": "" }
   ],
   "incomes": [
-    { "id": "inc-lui", "label": "Stipendio Marco", "personId": "lui", "accountId": "acc-lui", "amount": 1950, "day": 27 },
-    { "id": "inc-lei", "label": "Stipendio Giulia", "personId": "lei", "accountId": "acc-lei", "amount": 1900, "day": 27 }
+    { "id": "inc-lui", "label": "Stipendio Ygor", "personId": "lui", "accountId": "acc-lui", "amount": 1950, "day": 27 },
+    { "id": "inc-lei", "label": "Stipendio Sandra", "personId": "lei", "accountId": "acc-lei", "amount": 1950, "day": 23 }
   ],
   "recurring": [
     { "id": "rec-mutuo", "label": "Mutuo casa", "category": "casa", "amount": 780, "estimated": false, "everyMonths": 1, "startMonth": "2026-01", "day": 1, "accountId": "acc-comune" },

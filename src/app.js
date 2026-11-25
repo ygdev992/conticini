@@ -17,7 +17,10 @@ let tab = 'pagare';
 let month = todayStr().slice(0, 7);
 let addKind = 'ricorrente';
 
-const accName = (id) => data.accounts.find((a) => a.id === id)?.name ?? id;
+const accName = (id) => {
+  const a = data.accounts.find((x) => x.id === id);
+  return a ? (a.bank ? `${a.name} · ${a.bank}` : a.name) : id;
+};
 
 function viewPagare() {
   const today = todayStr();
@@ -60,8 +63,56 @@ function viewMese() {
     <h2>Giroconti del mese</h2>${giro}
     <h2>Uscite</h2>
     ${s.expenses.map((o) => `<div class="card"><div class="riga"><span>${esc(o.label)}</span><span class="imp">${o.estimated ? '~' : ''}${eur(o.amount)}</span></div>
-      <div class="sub">${dayLabel(o.date)} · ${esc(accName(o.accountId))}</div></div>`).join('')}
+      <div class="sub">${dayLabel(o.date)} · ${esc(accName(o.accountId))}</div>
+      ${o.kind === 'carta' ? '' : `<button class="act" data-del="${esc(o.sourceId)}">Elimina</button>`}</div>`).join('')}
     ${loans ? `<h2>Prestiti</h2>${loans}` : ''}`;
+}
+
+function viewImpostazioni() {
+  const people = data.people.map((p) => `<label>Nome (${p.id === 'lui' ? 'lui' : 'lei'})<input name="p:${p.id}" value="${esc(p.name)}" required></label>`).join('');
+  const accs = data.accounts.map((a) => `<div class="card"><strong>${esc(a.name)}</strong>
+    <label>Nome conto<input name="a:${a.id}:name" value="${esc(a.name)}" required></label>
+    <label>Banca (facoltativo)<input name="a:${a.id}:bank" value="${esc(a.bank ?? '')}"></label>
+    <label>Numero / IBAN (facoltativo, anche parziale)<input name="a:${a.id}:number" value="${esc(a.number ?? '')}"></label></div>`).join('');
+  return `<form id="settings"><h2>Persone</h2><div class="card">${people}</div><h2>Conti</h2>${accs}<button class="pri" type="submit">Salva</button></form>
+    <h2>Backup</h2>
+    <div class="card"><p class="sub">I dati stanno solo su questo dispositivo: esporta un file di backup ogni tanto.</p>
+      <button class="act" id="export">Esporta dati (file JSON)</button>
+      <label>Importa da file (sostituisce i dati attuali)<input id="import" type="file" accept="application/json,.json"></label></div>`;
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `conticini-backup-${todayStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function importData(file) {
+  try {
+    const next = JSON.parse(await file.text());
+    const ok = ['people', 'accounts', 'incomes', 'recurring', 'loans', 'creditCard', 'payments'].every((k) => k in next);
+    if (!ok) throw new Error('struttura non valida');
+    if (!confirm('Sostituire tutti i dati attuali con quelli del file?')) return;
+    data = next;
+    saveData(data);
+    tab = 'mese';
+    render();
+  } catch (err) {
+    alert(`File non valido: ${err.message}`);
+  }
+}
+
+function submitSettings(f) {
+  for (const [k, val] of new FormData(f)) {
+    const [kind, id, field] = k.split(':');
+    if (kind === 'p') data.people.find((p) => p.id === id).name = val.trim();
+    else data.accounts.find((a) => a.id === id)[field] = val.trim();
+  }
+  saveData(data);
+  render();
 }
 
 function accountOptions() {
@@ -95,6 +146,7 @@ function viewAggiungi() {
       <p class="sub">Verrà addebitato il giorno ${data.creditCard.chargeDay} del mese dopo sul conto di ${esc(accName(data.creditCard.holderAccountId))}. Se il mese esiste già viene aggiornato.</p>`;
   }
   return `${tabs}<form id="form" class="card">${form}<button class="pri" type="submit">Salva</button></form>
+    <button class="act" id="clear">Inizia da zero (svuota spese di esempio)</button>
     <button class="act" id="reset">Ripristina dati di esempio</button>`;
 }
 
@@ -117,12 +169,12 @@ function submitForm(f) {
 }
 
 function render() {
-  const titles = { pagare: 'Da pagare', mese: 'Mese', aggiungi: 'Aggiungi' };
+  const titles = { pagare: 'Da pagare', mese: 'Mese', aggiungi: 'Aggiungi', impostazioni: 'Impostazioni' };
   $('#titolo').textContent = titles[tab];
-  $('#mese-nav').hidden = tab === 'aggiungi';
+  $('#mese-nav').hidden = tab === 'aggiungi' || tab === 'impostazioni';
   $('#mese-label').textContent = monthLabel(month);
   document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-  $('#vista').innerHTML = { pagare: viewPagare, mese: viewMese, aggiungi: viewAggiungi }[tab]();
+  $('#vista').innerHTML = { pagare: viewPagare, mese: viewMese, aggiungi: viewAggiungi, impostazioni: viewImpostazioni }[tab]();
 }
 
 document.addEventListener('click', async (e) => {
@@ -131,17 +183,30 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.tab) { tab = t.dataset.tab; render(); }
   else if (t.id === 'prev') { month = addMonths(month, -1); render(); }
   else if (t.id === 'next') { month = addMonths(month, 1); render(); }
+  else if (t.id === 'export') exportData();
   else if (t.dataset.kind) { addKind = t.dataset.kind; render(); }
   else if (t.dataset.pay) {
     data.payments.push({ key: t.dataset.pay, paidOn: todayStr() });
+    saveData(data); render();
+  } else if (t.id === 'clear' && confirm('Cancellare spese, prestiti, carta e pagamenti? Restano persone, conti e stipendi.')) {
+    data.recurring = []; data.loans = []; data.payments = []; data.creditCard.monthly = [];
+    saveData(data); tab = 'mese'; render();
+  } else if (t.dataset.del && confirm('Eliminare questa voce da tutti i mesi?')) {
+    data.recurring = data.recurring.filter((r) => r.id !== t.dataset.del);
+    data.loans = data.loans.filter((l) => l.id !== t.dataset.del);
     saveData(data); render();
   } else if (t.id === 'reset' && confirm('Cancellare i tuoi dati e tornare all\'esempio?')) {
     data = await resetData(); render();
   }
 });
 
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'import' && e.target.files[0]) importData(e.target.files[0]);
+});
+
 document.addEventListener('submit', (e) => {
   if (e.target.id === 'form') { e.preventDefault(); submitForm(e.target); }
+  else if (e.target.id === 'settings') { e.preventDefault(); submitSettings(e.target); }
 });
 
 data = await loadData();

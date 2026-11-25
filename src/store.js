@@ -26,8 +26,21 @@ export async function resetData() {
   return data;
 }
 
+let afterSave = null;
+export const setAfterSave = (fn) => { afterSave = fn; };
+
 export function saveData(data) {
+  saveLocal(data);
+  afterSave?.(data);
+}
+
+export function saveLocal(data) {
   localStorage.setItem(KEY, JSON.stringify(data));
+}
+
+// Dati vuoti per partire da zero: restano persone, conti, entrate e categorie da personalizzare.
+export function blankData(data) {
+  return { ...data, recurring: [], loans: [], payments: [], changes: [], overrides: [], creditCard: { ...data.creditCard, monthly: [] } };
 }
 
 export function newId(prefix) {

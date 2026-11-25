@@ -1,8 +1,10 @@
 :root { --bg:#f5f6f8; --card:#fff; --txt:#1c2128; --mut:#6b7280; --ok:#1a7f37; --warn:#f26b00; --bad:#cf222e; --acc:#1f6feb; }
 * { box-sizing: border-box; }
 body { margin:0; font:16px/1.4 system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--txt); padding-bottom:70px; }
-header { padding:env(safe-area-inset-top) 16px 0; background:var(--acc); color:#fff; }
+header { position:relative; padding:env(safe-area-inset-top) 16px 0; background:var(--acc); color:#fff; }
+#sync { position:absolute; top:calc(env(safe-area-inset-top) + 14px); right:16px; color:#fff; font-size:.8rem; opacity:.9; }
 header h1 { margin:0; padding:12px 0; font-size:1.2rem; }
+[hidden] { display:none !important; }
 .mese-nav { display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; font-weight:600; text-transform:capitalize; }
 .mese-nav button { background:none; border:0; color:#fff; font-size:1.6rem; padding:0 12px; }
 main { padding:12px; max-width:640px; margin:auto; }

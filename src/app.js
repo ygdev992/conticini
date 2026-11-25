@@ -1,6 +1,7 @@
 import { dueList, monthSummary, loanStatus, addMonths, incomeLabel, incomesForMonth, amountFor, INCOME_TYPES } from './engine.js';
 import { OTHER_PRESET, presetsOf, categoryLabel, presetsToText, textToPresets } from './categories.js';
-import { loadData, saveData, resetData, newId, migrate } from './store.js';
+import { loadData, saveData, saveLocal, setAfterSave, blankData, resetData, newId, migrate } from './store.js';
+import * as cloud from './cloud.js';
 
 const $ = (s) => document.querySelector(s);
 const eur = (n) => n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
@@ -20,6 +21,60 @@ let addKind = 'ricorrente';
 let draft = null;
 let editing = null;
 let amountEdit = null;
+let allowedEmails = [];
+
+const SYNC_LABEL = { locale: '', ok: '☁ sincronizzato', sync: '☁ …', offline: '☁ offline' };
+cloud.onStatus((s) => { $('#sync').textContent = SYNC_LABEL[s] ?? ''; });
+
+async function syncFromCloud() {
+  const remote = await cloud.pull();
+  if (remote) {
+    data = migrate(remote.data);
+    allowedEmails = remote.allowedEmails;
+    saveLocal(data);
+  } else {
+    data = blankData(data);
+    allowedEmails = [cloud.getEmail()];
+    await cloud.push(data, allowedEmails);
+    saveLocal(data);
+  }
+}
+
+function viewLogin() {
+  return `<form id="login" class="card"><p class="sub">Accedi per sincronizzare i dati tra i vostri telefoni.</p>
+    <label>E-mail<input name="email" type="email" autocomplete="email" required></label>
+    <label>Password<input name="password" type="password" minlength="6" autocomplete="current-password" required></label>
+    <p id="login-msg" class="sub" role="status"></p>
+    <button class="pri" type="submit" value="in">Accedi</button>
+    <button class="act" type="submit" value="up" formnovalidate>Crea account</button></form>`;
+}
+
+async function submitLogin(f, action) {
+  const v = Object.fromEntries(new FormData(f));
+  const msg = (t) => { $('#login-msg').textContent = t; };
+  if (!v.email || (v.password ?? '').length < 6) { msg('Inserisci e-mail e una password di almeno 6 caratteri.'); return; }
+  msg('Un attimo…');
+  try {
+    if (action === 'up') {
+      const logged = await cloud.signUp(v.email, v.password);
+      if (!logged) { msg('Account creato: conferma l\'e-mail ricevuta, poi premi Accedi.'); return; }
+    } else await cloud.signIn(v.email, v.password);
+    await syncFromCloud();
+    tab = 'mese';
+    render();
+  } catch (err) {
+    msg(`Accesso non riuscito: ${err.message}`);
+  }
+}
+
+function viewCloud() {
+  if (!cloud.cloudEnabled) return '';
+  const partner = allowedEmails.find((e) => e !== cloud.getEmail()) ?? '';
+  return `<h2>Cloud</h2><div class="card"><p class="sub">Connesso come ${esc(cloud.getEmail() ?? '')}</p>
+    <form id="partner"><label>E-mail del partner (può accedere agli stessi dati)<input name="partner" type="email" value="${esc(partner)}"></label>
+      <button class="act" type="submit">Salva partner</button></form>
+    <button class="act" id="logout">Esci</button></div>`;
+}
 
 const accName = (id) => {
   const a = data.accounts.find((x) => x.id === id);
@@ -106,6 +161,7 @@ function viewImpostazioni() {
     <h2>Carta di credito</h2><div class="card"><label>Conto di addebito predefinito<select name="cc:holder">${accountOptions(data.creditCard.holderAccountId)}</select></label>
       <p class="sub">Puoi cambiarlo mese per mese quando inserisci il totale in "Aggiungi".</p></div>
     <h2>Conti</h2>${accs}<button class="pri" type="submit">Salva</button></form>
+        ${viewCloud()}
     <h2>Backup</h2>
     <div class="card"><p class="sub">I dati stanno solo su questo dispositivo: esporta un file di backup ogni tanto.</p>
       <button class="act" id="export">Esporta dati (file JSON)</button>
@@ -297,6 +353,14 @@ function startEdit(id) {
 }
 
 function render() {
+  const locked = cloud.cloudEnabled && !cloud.signedIn();
+  document.querySelector('nav').hidden = locked;
+  if (locked) {
+    $('#titolo').textContent = 'Conticini';
+    $('#mese-nav').hidden = true;
+    $('#vista').innerHTML = viewLogin();
+    return;
+  }
   const titles = { pagare: 'Da pagare', mese: 'Mese', aggiungi: 'Aggiungi', impostazioni: 'Impostazioni' };
   $('#titolo').textContent = titles[tab];
   $('#mese-nav').hidden = tab === 'aggiungi' || tab === 'impostazioni';
@@ -330,7 +394,8 @@ document.addEventListener('click', async (e) => {
     applySettings($('#settings'));
     data.incomes = data.incomes.filter((i) => i.id !== t.dataset.delinc);
     saveData(data); render();
-  } else if (t.id === 'export') exportData();
+  } else if (t.id === 'logout') { await cloud.signOut(); render(); }
+  else if (t.id === 'export') exportData();
   else if (t.dataset.kind) { addKind = t.dataset.kind; draft = null; render(); }
   else if (t.dataset.edit) startEdit(t.dataset.edit);
   else if (t.id === 'cancel-edit') { editing = null; draft = null; tab = 'mese'; render(); }
@@ -364,9 +429,29 @@ document.addEventListener('change', (e) => {
 document.addEventListener('submit', (e) => {
   if (e.target.id === 'form') { e.preventDefault(); submitForm(e.target); }
   else if (e.target.id === 'amount-form') { e.preventDefault(); submitAmount(e.target); }
+  else if (e.target.id === 'login') { e.preventDefault(); submitLogin(e.target, e.submitter?.value); }
+  else if (e.target.id === 'partner') {
+    e.preventDefault();
+    const p = new FormData(e.target).get('partner').trim().toLowerCase();
+    allowedEmails = [cloud.getEmail(), ...(p ? [p] : [])];
+    cloud.push(data, allowedEmails).then(() => alert('Salvato.')).catch((err) => alert(`Errore: ${err.message}`));
+  }
   else if (e.target.id === 'settings') { e.preventDefault(); submitSettings(e.target); }
 });
 
 data = await loadData();
+setAfterSave(() => cloud.schedulePush(() => data));
+try {
+  await cloud.init();
+  if (cloud.signedIn()) await syncFromCloud();
+} catch { /* offline: si usa la copia locale */ }
 render();
+
+// Al ritorno sull'app, se l'altro ha salvato nel frattempo vince il suo salvataggio più recente.
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !cloud.signedIn() || cloud.hasPending() || editing || draft || amountEdit) return;
+  try {
+    if (await cloud.remoteChanged()) { await syncFromCloud(); render(); }
+  } catch { /* offline */ }
+});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');

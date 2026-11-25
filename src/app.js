@@ -1,4 +1,5 @@
-import { dueList, monthSummary, loanStatus, addMonths, incomeLabel, INCOME_TYPES } from './engine.js';
+import { dueList, monthSummary, loanStatus, addMonths, incomeLabel, incomesForMonth, amountFor, INCOME_TYPES } from './engine.js';
+import { OTHER_PRESET, presetsOf, categoryLabel, presetsToText, textToPresets } from './categories.js';
 import { loadData, saveData, resetData, newId, migrate } from './store.js';
 
 const $ = (s) => document.querySelector(s);
@@ -16,6 +17,9 @@ let data;
 let tab = 'pagare';
 let month = todayStr().slice(0, 7);
 let addKind = 'ricorrente';
+let draft = null;
+let editing = null;
+let amountEdit = null;
 
 const accName = (id) => {
   const a = data.accounts.find((x) => x.id === id);
@@ -61,10 +65,15 @@ function viewMese() {
       <div class="grande ${s.remaining >= 0 ? 'pos' : 'neg'}">${eur(s.remaining)}</div>
     </div>
     <h2>Giroconti del mese</h2>${giro}
+    <h2>Entrate</h2>
+    ${incomesForMonth(data, month).map((o) => `<div class="card"><div class="riga"><span>${esc(o.label)} · ${esc(data.people.find((p) => p.id === o.personId)?.name ?? '')}</span><span class="imp">${eur(o.amount)}</span></div>
+      <button class="act" data-amount="${esc(o.sourceId)}" data-akind="entrata">Cambia importo</button></div>`).join('')}
+    <h2>Per categoria</h2>
+    <div class="card">${s.byCategory.map((c) => `<div class="riga"><span>${esc(categoryLabel(data.categories, c.category))}</span><span class="imp">${eur(c.total)}</span></div>`).join('')}</div>
     <h2>Uscite</h2>
     ${s.expenses.map((o) => `<div class="card"><div class="riga"><span>${esc(o.label)}</span><span class="imp">${o.estimated ? '~' : ''}${eur(o.amount)}</span></div>
-      <div class="sub">${dayLabel(o.date)} · ${esc(accName(o.accountId))}</div>
-      ${o.kind === 'carta' ? '' : `<button class="act" data-del="${esc(o.sourceId)}">Elimina</button>`}</div>`).join('')}
+      <div class="sub">${esc(categoryLabel(data.categories, o.category))} · ${dayLabel(o.date)} · ${esc(accName(o.accountId))}</div>
+      ${o.kind === 'carta' ? '' : `<button class="act" data-amount="${esc(o.sourceId)}">Cambia importo</button> <button class="act" data-edit="${esc(o.sourceId)}">Modifica</button> <button class="act" data-del="${esc(o.sourceId)}">Elimina</button>`}</div>`).join('')}
     ${loans ? `<h2>Prestiti</h2>${loans}` : ''}`;
 }
 
@@ -73,7 +82,7 @@ function personOptions(selected) {
 }
 
 function viewImpostazioni() {
-  const incomes = data.incomes.map((i) => `<div class="card"><div class="riga"><strong>${esc(incomeLabel(i, data))}</strong>
+  const incomes = data.incomes.map((i) => `<div class="card"><div class="riga"><strong>${esc(incomeLabel(i))} · ${esc(data.people.find((p) => p.id === i.personId)?.name ?? '')}</strong>
     <button type="button" class="act" data-delinc="${esc(i.id)}">Elimina</button></div>
     <label>Tipo<select name="i:${i.id}:type" data-retype>${Object.entries(INCOME_TYPES).map(([k, v]) =>
       `<option value="${k}"${k === i.type ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
@@ -87,8 +96,13 @@ function viewImpostazioni() {
     <label>Nome conto<input name="a:${a.id}:name" value="${esc(a.name)}" required></label>
     <label>Banca (facoltativo)<input name="a:${a.id}:bank" value="${esc(a.bank ?? '')}"></label>
     <label>Numero / IBAN (facoltativo, anche parziale)<input name="a:${a.id}:number" value="${esc(a.number ?? '')}"></label></div>`).join('');
+  const cats = data.categories.map((c) => `<div class="card"><div class="riga"><strong>${esc(c.label)}</strong>
+    <button type="button" class="act" data-delcat="${esc(c.id)}">Elimina</button></div>
+    <label>Nome categoria<input name="c:${c.id}:label" value="${esc(c.label)}" required></label>
+    <label>Voci suggerite (una per riga: nome, ogni quanti mesi, "stimato")<textarea name="c:${c.id}:presets" rows="4">${esc(presetsToText(c.presets))}</textarea></label></div>`).join('');
   return `<form id="settings"><h2>Persone</h2><div class="card">${people}</div>
     <h2>Entrate</h2>${incomes}<button type="button" class="act" id="add-income">+ Aggiungi entrata</button>
+    <h2>Categorie spese</h2>${cats}<button type="button" class="act" id="add-category">+ Aggiungi categoria</button>
     <h2>Carta di credito</h2><div class="card"><label>Conto di addebito predefinito<select name="cc:holder">${accountOptions(data.creditCard.holderAccountId)}</select></label>
       <p class="sub">Puoi cambiarlo mese per mese quando inserisci il totale in "Aggiungi".</p></div>
     <h2>Conti</h2>${accs}<button class="pri" type="submit">Salva</button></form>
@@ -131,6 +145,12 @@ function applySettings(f) {
       inc[field] = ['amount', 'day'].includes(field) ? +val : val.trim();
       continue;
     }
+    if (kind === 'c') {
+      const cat = data.categories.find((x) => x.id === id);
+      if (field === 'label') cat.label = val.trim();
+      else cat.presets = textToPresets(val, cat.presets);
+      continue;
+    }
     if (kind === 'p') data.people.find((p) => p.id === id).name = val.trim();
     else data.accounts.find((a) => a.id === id)[field] = val.trim();
   }
@@ -146,53 +166,133 @@ function accountOptions(selected) {
   return data.accounts.map((a) => `<option value="${esc(a.id)}"${a.id === selected ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
 }
 
+const emptyDraft = (kind) => (kind === 'ricorrente'
+  ? { category: data.categories[0]?.id ?? 'altro', preset: 'altro', label: '', amount: '', estimated: false, everyMonths: 1, startMonth: month, day: 1, accountId: data.accounts[0].id }
+  : { label: '', installment: '', totalInstallments: '', remainingInstallments: '', asOfMonth: month, day: 1, accountId: data.accounts[0].id });
+
+function applyPreset(d) {
+  const p = presetsOf(data.categories, d.category).find((x) => x.id === d.preset) ?? OTHER_PRESET;
+  d.label = p.id === 'altro' ? '' : p.label;
+  d.everyMonths = p.every;
+  d.estimated = p.estimated;
+}
+
+function readDraft(f) {
+  const v = Object.fromEntries(new FormData(f));
+  return { ...v, estimated: !!v.estimated };
+}
+
+const FREQUENCIES = { 1: 'Mensile', 2: 'Bimestrale', 3: 'Trimestrale', 6: 'Semestrale', 12: 'Annuale' };
+
+function viewImporto() {
+  const { sourceId, month: m } = amountEdit;
+  const src = [...data.recurring, ...data.loans, ...data.incomes].find((x) => x.id === sourceId);
+  const base = src.amount ?? src.installment;
+  const cur = amountFor(data, sourceId, m, base);
+  const name = src.label ?? incomeLabel(src);
+  return `<h2>${esc(name)} · ${monthLabel(m)}</h2>
+    <form id="amount-form" class="card">
+      <label>Nuovo importo (€)<input name="amount" type="number" step="0.01" min="0" value="${cur.amount}" required></label>
+      <label><input type="radio" name="scope" value="month" checked style="width:auto"> Solo ${monthLabel(m)} (es. bolletta reale)</label>
+      <label><input type="radio" name="scope" value="from" style="width:auto"> Da ${monthLabel(m)} in poi (i mesi passati non cambiano)</label>
+      <button class="pri" type="submit">Salva</button></form>
+    <button class="act" id="cancel-amount">Annulla</button>`;
+}
+
+function submitAmount(f) {
+  const v = Object.fromEntries(new FormData(f));
+  const { sourceId, month: m } = amountEdit;
+  const key = `${sourceId}|${m}`;
+  data.overrides = data.overrides.filter((o) => o.key !== key);
+  if (v.scope === 'month') data.overrides.push({ key, amount: +v.amount });
+  else {
+    data.changes = data.changes.filter((c) => !(c.sourceId === sourceId && c.from === m));
+    data.changes.push({ sourceId, from: m, amount: +v.amount });
+  }
+  saveData(data);
+  amountEdit = null;
+  tab = 'mese';
+  render();
+}
+
 function viewAggiungi() {
+  if (amountEdit) return viewImporto();
   const kinds = { ricorrente: 'Ricorrente', prestito: 'Prestito', carta: 'Carta' };
-  const tabs = `<div class="tabs">${Object.entries(kinds).map(([k, v]) =>
+  const tabs = editing ? '' : `<div class="tabs">${Object.entries(kinds).map(([k, v]) =>
     `<button data-kind="${k}" class="${k === addKind ? 'on' : ''}">${v}</button>`).join('')}</div>`;
-  const common = `<label>Conto di addebito<select name="accountId">${accountOptions()}</select></label>`;
+  const d = draft ?? (addKind === 'carta' ? {} : emptyDraft(addKind));
+  const common = `<label>Conto di addebito<select name="accountId">${accountOptions(d.accountId)}</select></label>`;
   let form;
   if (addKind === 'ricorrente') {
-    form = `<label>Nome<input name="label" required></label>
-      <label>Importo (€)<input name="amount" type="number" step="0.01" min="0" required></label>
-      <label><input name="estimated" type="checkbox" style="width:auto"> Importo stimato</label>
-      <label>Frequenza<select name="everyMonths"><option value="1">Mensile</option><option value="2">Bimestrale</option>
-        <option value="3">Trimestrale</option><option value="12">Annuale</option></select></label>
-      <label>Primo mese<input name="startMonth" type="month" value="${month}" required></label>
-      <label>Giorno del mese<input name="day" type="number" min="1" max="31" value="1" required></label>${common}`;
+    const cats = data.categories.map((c) => `<option value="${esc(c.id)}"${c.id === d.category ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
+    const presets = presetsOf(data.categories, d.category).map((p) => `<option value="${esc(p.id)}"${p.id === d.preset ? ' selected' : ''}>${esc(p.label)}</option>`).join('');
+    const freqs = { ...FREQUENCIES, [d.everyMonths]: FREQUENCIES[d.everyMonths] ?? `Ogni ${d.everyMonths} mesi` };
+    form = `<label>Categoria<select name="category" data-redraft>${cats}</select></label>
+      <label>Voce<select name="preset" data-redraft>${presets}</select></label>
+      <label>Nome<input name="label" value="${esc(d.label)}" required></label>
+      <label>Importo (€)<input name="amount" type="number" step="0.01" min="0" value="${esc(d.amount)}" required></label>
+      <label><input name="estimated" type="checkbox" style="width:auto"${d.estimated ? ' checked' : ''}> Importo stimato (bolletta variabile)</label>
+      <label>Frequenza<select name="everyMonths">${Object.entries(freqs).map(([k, v]) => `<option value="${k}"${+k === +d.everyMonths ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label>Primo mese<input name="startMonth" type="month" value="${esc(d.startMonth)}" required></label>
+      <label>Giorno del mese<input name="day" type="number" min="1" max="31" value="${esc(d.day)}" required></label>${common}`;
   } else if (addKind === 'prestito') {
-    form = `<label>Nome<input name="label" required></label>
-      <label>Importo rata (€)<input name="installment" type="number" step="0.01" min="0" required></label>
-      <label>Rate totali<input name="totalInstallments" type="number" min="1" required></label>
-      <label>Rate rimanenti (inclusa quella del mese)<input name="remainingInstallments" type="number" min="1" required></label>
-      <label>Mese di riferimento<input name="asOfMonth" type="month" value="${month}" required></label>
-      <label>Giorno del mese<input name="day" type="number" min="1" max="31" value="1" required></label>${common}`;
+    form = `<label>Nome<input name="label" value="${esc(d.label)}" required></label>
+      <label>Importo rata (€)<input name="installment" type="number" step="0.01" min="0" value="${esc(d.installment)}" required></label>
+      <label>Rate totali<input name="totalInstallments" type="number" min="1" value="${esc(d.totalInstallments)}" required></label>
+      <label>Rate rimanenti (inclusa quella del mese)<input name="remainingInstallments" type="number" min="1" value="${esc(d.remainingInstallments)}" required></label>
+      <label>Mese di riferimento<input name="asOfMonth" type="month" value="${esc(d.asOfMonth)}" required></label>
+      <label>Giorno del mese<input name="day" type="number" min="1" max="31" value="${esc(d.day)}" required></label>${common}`;
   } else {
     form = `<label>Mese di spesa<input name="month" type="month" value="${addMonths(todayStr().slice(0, 7), -1)}" required></label>
       <label>Totale (€)<input name="total" type="number" step="0.01" min="0" required></label>
       <label>Conto di addebito<select name="accountId">${accountOptions(data.creditCard.holderAccountId)}</select></label>
       <p class="sub">Verrà addebitato il giorno ${data.creditCard.chargeDay} del mese dopo. Se il mese esiste già viene aggiornato.</p>`;
   }
-  return `${tabs}<form id="form" class="card">${form}<button class="pri" type="submit">Salva</button></form>
-    <button class="act" id="clear">Inizia da zero (svuota spese di esempio)</button>
+  const title = editing ? `<h2>Modifica voce</h2>` : '';
+  const footer = editing
+    ? '<button class="act" id="cancel-edit">Annulla modifica</button>'
+    : `<button class="act" id="clear">Inizia da zero (svuota spese di esempio)</button>
     <button class="act" id="reset">Ripristina dati di esempio</button>`;
+  return `${tabs}${title}<form id="form" class="card">${form}<button class="pri" type="submit">Salva</button></form>${footer}`;
 }
 
 function submitForm(f) {
   const v = Object.fromEntries(new FormData(f));
   if (addKind === 'ricorrente') {
-    data.recurring.push({ id: newId('rec'), label: v.label, category: 'altro', amount: +v.amount, estimated: !!v.estimated,
-      everyMonths: +v.everyMonths, startMonth: v.startMonth, day: +v.day, accountId: v.accountId });
+    const item = { label: v.label, category: v.category, amount: +v.amount, estimated: !!v.estimated,
+      everyMonths: +v.everyMonths, startMonth: v.startMonth, day: +v.day, accountId: v.accountId };
+    const ex = editing && data.recurring.find((r) => r.id === editing.id);
+    if (ex) Object.assign(ex, item); else data.recurring.push({ id: newId('rec'), ...item });
   } else if (addKind === 'prestito') {
-    data.loans.push({ id: newId('loan'), label: v.label, installment: +v.installment, totalInstallments: +v.totalInstallments,
-      remainingInstallments: +v.remainingInstallments, asOfMonth: v.asOfMonth, day: +v.day, accountId: v.accountId });
+    const item = { label: v.label, installment: +v.installment, totalInstallments: +v.totalInstallments,
+      remainingInstallments: +v.remainingInstallments, asOfMonth: v.asOfMonth, day: +v.day, accountId: v.accountId };
+    const ex = editing && data.loans.find((l) => l.id === editing.id);
+    if (ex) Object.assign(ex, item); else data.loans.push({ id: newId('loan'), ...item });
   } else {
     const list = data.creditCard.monthly;
     const ex = list.find((x) => x.month === v.month);
     if (ex) { ex.total = +v.total; ex.accountId = v.accountId; } else list.push({ month: v.month, total: +v.total, accountId: v.accountId });
   }
   saveData(data);
+  editing = null;
+  draft = null;
   tab = 'mese';
+  render();
+}
+
+function startEdit(id) {
+  const r = data.recurring.find((x) => x.id === id);
+  const l = data.loans.find((x) => x.id === id);
+  if (r) {
+    const category = data.categories.some((c) => c.id === r.category) ? r.category : data.categories[0]?.id;
+    addKind = 'ricorrente';
+    draft = { ...r, category, preset: 'altro', amount: r.amount };
+  } else if (l) {
+    addKind = 'prestito';
+    draft = { ...l };
+  } else return;
+  editing = { id };
+  tab = 'aggiungi';
   render();
 }
 
@@ -208,7 +308,18 @@ function render() {
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.tab) { tab = t.dataset.tab; render(); }
+  if (t.dataset.tab) { tab = t.dataset.tab; draft = null; editing = null; amountEdit = null; render(); }
+  else if (t.dataset.amount) { amountEdit = { sourceId: t.dataset.amount, month }; tab = 'aggiungi'; render(); }
+  else if (t.id === 'cancel-amount') { amountEdit = null; tab = 'mese'; render(); }
+  else if (t.id === 'add-category') {
+    applySettings($('#settings'));
+    data.categories.push({ id: newId('cat'), label: 'Nuova categoria', presets: [] });
+    saveData(data); render();
+  } else if (t.dataset.delcat && confirm('Eliminare la categoria? Le voci già inserite finiranno in "Altro".')) {
+    applySettings($('#settings'));
+    data.categories = data.categories.filter((c) => c.id !== t.dataset.delcat);
+    saveData(data); render();
+  }
   else if (t.id === 'prev') { month = addMonths(month, -1); render(); }
   else if (t.id === 'next') { month = addMonths(month, 1); render(); }
   else if (t.id === 'add-income') {
@@ -220,7 +331,9 @@ document.addEventListener('click', async (e) => {
     data.incomes = data.incomes.filter((i) => i.id !== t.dataset.delinc);
     saveData(data); render();
   } else if (t.id === 'export') exportData();
-  else if (t.dataset.kind) { addKind = t.dataset.kind; render(); }
+  else if (t.dataset.kind) { addKind = t.dataset.kind; draft = null; render(); }
+  else if (t.dataset.edit) startEdit(t.dataset.edit);
+  else if (t.id === 'cancel-edit') { editing = null; draft = null; tab = 'mese'; render(); }
   else if (t.dataset.pay) {
     data.payments.push({ key: t.dataset.pay, paidOn: todayStr() });
     saveData(data); render();
@@ -237,12 +350,20 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.hasAttribute('data-redraft')) {
+    draft = readDraft($('#form'));
+    if (e.target.name === 'category') draft.preset = presetsOf(data.categories, draft.category)[0].id;
+    if (e.target.name === 'category' || e.target.name === 'preset') applyPreset(draft);
+    render();
+    return;
+  }
   if (e.target.dataset.retype !== undefined) { applySettings($('#settings')); render(); return; }
   if (e.target.id === 'import' && e.target.files[0]) importData(e.target.files[0]);
 });
 
 document.addEventListener('submit', (e) => {
   if (e.target.id === 'form') { e.preventDefault(); submitForm(e.target); }
+  else if (e.target.id === 'amount-form') { e.preventDefault(); submitAmount(e.target); }
   else if (e.target.id === 'settings') { e.preventDefault(); submitSettings(e.target); }
 });
 

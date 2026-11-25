@@ -48,15 +48,25 @@ export function loanStatus(loan, month) {
   };
 }
 
+// Storico importi: `overrides` vale per un solo mese (importo reale), `changes` da un mese in poi.
+export function amountFor(data, sourceId, month, base) {
+  const ov = (data.overrides ?? []).find((o) => o.key === occurrenceKey(sourceId, month));
+  if (ov) return { amount: ov.amount, overridden: true };
+  const ch = (data.changes ?? []).filter((c) => c.sourceId === sourceId && c.from <= month)
+    .sort((a, b) => b.from.localeCompare(a.from))[0];
+  return { amount: ch ? ch.amount : base, overridden: false };
+}
+
 export function occurrencesForMonth(data, month) {
   const out = [];
 
   for (const r of data.recurring ?? []) {
     const diff = monthIndex(month) - monthIndex(r.startMonth);
     if (diff < 0 || diff % r.everyMonths !== 0) continue;
+    const a = amountFor(data, r.id, month, r.amount);
     out.push({
       key: occurrenceKey(r.id, month), sourceId: r.id, kind: 'ricorrente', label: r.label,
-      amount: r.amount, estimated: !!r.estimated, date: dateInMonth(month, r.day), accountId: r.accountId,
+      amount: a.amount, estimated: !!r.estimated && !a.overridden, date: dateInMonth(month, r.day), accountId: r.accountId, category: r.category ?? 'altro',
     });
   }
 
@@ -66,7 +76,7 @@ export function occurrencesForMonth(data, month) {
     out.push({
       key: occurrenceKey(l.id, month), sourceId: l.id, kind: 'prestito',
       label: `${l.label} (${st.paid + 1}/${l.totalInstallments})`,
-      amount: l.installment, estimated: false, date: dateInMonth(month, l.day), accountId: l.accountId,
+      amount: amountFor(data, l.id, month, l.installment).amount, estimated: false, date: dateInMonth(month, l.day), accountId: l.accountId, category: 'finanziamenti',
     });
   }
 
@@ -77,7 +87,7 @@ export function occurrencesForMonth(data, month) {
     if (prev) {
       out.push({
         key: occurrenceKey('cc', month), sourceId: 'cc', kind: 'carta', label: `${cc.label} (spese ${prev.month})`,
-        amount: prev.total, estimated: false, date: dateInMonth(month, cc.chargeDay ?? 5), accountId: prev.accountId ?? cc.holderAccountId,
+        amount: prev.total, estimated: false, date: dateInMonth(month, cc.chargeDay ?? 5), accountId: prev.accountId ?? cc.holderAccountId, category: 'carta',
       });
     }
   }
@@ -87,18 +97,15 @@ export function occurrencesForMonth(data, month) {
 
 export const INCOME_TYPES = { stipendio: 'Stipendio', altro: 'Altra entrata' };
 
-export function incomeLabel(i, data) {
-  if (i.type === 'stipendio') {
-    const p = data.people.find((x) => x.id === i.personId);
-    return `Stipendio ${p?.name ?? ''}`.trim();
-  }
+export function incomeLabel(i) {
+  if (i.type === 'stipendio') return 'Stipendio';
   return i.label || 'Entrata';
 }
 
 export function incomesForMonth(data, month) {
   return (data.incomes ?? []).map((i) => ({
-    key: occurrenceKey(i.id, month), sourceId: i.id, type: i.type, label: incomeLabel(i, data), personId: i.personId,
-    amount: i.amount, date: dateInMonth(month, i.day), accountId: i.accountId,
+    key: occurrenceKey(i.id, month), sourceId: i.id, type: i.type, label: incomeLabel(i), personId: i.personId,
+    amount: amountFor(data, i.id, month, i.amount).amount, date: dateInMonth(month, i.day), accountId: i.accountId,
   }));
 }
 
@@ -137,13 +144,19 @@ export function transfers(data, month) {
   return result;
 }
 
+export function totalsByCategory(expenses) {
+  const map = new Map();
+  for (const o of expenses) map.set(o.category, (map.get(o.category) ?? 0) + o.amount);
+  return [...map].map(([category, total]) => ({ category, total: round2(total) })).sort((a, b) => b.total - a.total);
+}
+
 export function monthSummary(data, month) {
   const incomes = incomesForMonth(data, month);
   const expenses = occurrencesForMonth(data, month);
   const totalIncome = round2(incomes.reduce((s, i) => s + i.amount, 0));
   const totalExpenses = round2(expenses.reduce((s, o) => s + o.amount, 0));
   return {
-    month, incomes, expenses, totalIncome, totalExpenses,
+    month, incomes, expenses, totalIncome, totalExpenses, byCategory: totalsByCategory(expenses),
     remaining: round2(totalIncome - totalExpenses),
     transfers: transfers(data, month),
   };

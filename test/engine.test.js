@@ -80,12 +80,37 @@ test('dueStatus', () => {
   assert.equal(dueStatus(occ, '2026-11-25', [{ key: 'x|2026-11' }]), 'pagato');
 });
 
-test('entrate: lo stipendio usa il nome attuale della persona', () => {
+test('entrate: lo stipendio ha etichetta fissa, le altre voci la propria descrizione', () => {
   const custom = structuredClone(data);
-  custom.people[0].name = 'Idod';
   custom.incomes.push({ id: 'inc-x', type: 'altro', label: 'Affitto box', personId: 'lei', accountId: 'acc-lei', amount: 100, day: 5 });
   const labelsOut = monthSummary(custom, '2026-11').incomes.map((i) => i.label);
-  assert.deepEqual(labelsOut, ['Stipendio Idod', 'Stipendio Sandra', 'Affitto box']);
+  assert.deepEqual(labelsOut, ['Stipendio', 'Stipendio', 'Affitto box']);
+});
+
+test('categorie: ogni uscita ha la sua e i totali per categoria tornano', () => {
+  const s = monthSummary(data, '2026-11');
+  const cat = (id) => s.expenses.find((o) => o.sourceId === id).category;
+  assert.equal(cat('rec-luce'), 'utenze');
+  assert.equal(cat('loan-cucina'), 'finanziamenti');
+  assert.equal(cat('cc'), 'carta');
+  const sum = s.byCategory.reduce((a, c) => a + c.total, 0);
+  assert.equal(Math.round(sum * 100) / 100, s.totalExpenses);
+});
+
+test('storico importi: variazione da un mese in poi e override del singolo mese', () => {
+  const d = structuredClone(data);
+  const luce = d.recurring.find((r) => r.id === 'rec-luce');
+  const base = luce.amount;
+  const at = (m) => occurrencesForMonth(d, m).find((o) => o.sourceId === 'rec-luce');
+  d.changes = [{ sourceId: 'rec-luce', from: '2026-11', amount: base + 10 }];
+  d.overrides = [{ key: 'rec-luce|2026-11', amount: 1 }];
+  assert.equal(at('2026-09').amount, base);
+  assert.equal(at('2026-11').amount, 1);
+  assert.equal(at('2026-11').estimated, false);
+  d.overrides = [];
+  assert.equal(at('2026-11').amount, base + 10);
+  assert.equal(at('2027-01').amount, base + 10);
+  assert.equal(at('2026-09').amount, base);
 });
 
 test('riepilogo mese', () => {
